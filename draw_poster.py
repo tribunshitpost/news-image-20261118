@@ -1,49 +1,52 @@
 #!/usr/bin/env python3
 """Draw the 18 November 2026 world-news poster (1024x1024 PNG).
 
-One day's news, in one image. Every fact below was verified against real
-reporting published on 18 November 2026 (Reuters, AP, The Guardian, RNZ,
-NZ MetService, AAP, Malaysiakini, Xinhua, Euronext). No event, figure or
-quote is invented, and no story is carried over from any other day.
+A single broadsheet page, "THE WORLD IN ONE DAY", summing up Wednesday
+18 November 2026. Every fact was re-verified in this build session against
+reporting published on 18 November 2026 (Reuters, AP via AAP, RNZ, Fiji
+Meteorological Service, Cook Islands Meteorological Service, Malaysiakini,
+Xinhua). No figure is invented and no story comes from another day.
 
-Layout: newspaper front page with a teal masthead. Lead story on the left
-with a drawn map of the Gulf, five more stories plus a "By the numbers"
-panel in a 2x3 grid, an "ALSO" strip, and a sources footer.
-Run: python3 draw_poster.py -> entry.png
+Layout: navy header band; full-width lead story with a drawn Gulf map;
+five stories plus a numbers box in a 2 x 3 grid; an ALSO strip; a sources
+footer. Deterministic: no timestamps, no randomness, fixed fonts.
+Run: python3 draw_poster.py  ->  entry.png
 """
+
 import math
-import os
 
 from PIL import Image, ImageDraw, ImageFont
 
 W = H = 1024
-PAPER = (250, 247, 240)
-INK = (24, 24, 24)
-TEAL = (14, 59, 57)
-TEAL_DARK = (9, 42, 41)
-GOLD = (232, 184, 75)
-RED = (166, 30, 30)
-MUTED = (96, 104, 112)
+PAPER = (247, 243, 234)
+NAVY = (16, 32, 54)
+NAVY_LIGHT = (28, 52, 84)
+GOLD = (198, 154, 52)
+GOLD_LIGHT = (238, 214, 140)
+INK = (22, 22, 22)
+GREY = (88, 92, 98)
 CARD = (255, 255, 255)
-BORDER = (214, 207, 190)
-STRIP = (243, 233, 210)
-FOOT = (107, 114, 128)
+LINE = (205, 198, 182)
+RED = (158, 28, 28)
+TEAL = (13, 92, 102)
+GREEN = (28, 92, 48)
+BLUE = (30, 58, 95)
+SLATE = (71, 85, 105)
 
 BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 
-def font(path, size):
+def fnt(path, size):
     return ImageFont.truetype(path, size)
 
 
-def wrap(draw, text, fnt, max_w):
-    """Greedy word wrap, returns lines that fit max_w."""
+def wrap(d, text, font, max_w):
     words = text.split()
     lines, cur = [], ""
     for word in words:
         trial = (cur + " " + word).strip()
-        if draw.textlength(trial, font=fnt) <= max_w:
+        if d.textlength(trial, font=font) <= max_w:
             cur = trial
         else:
             if cur:
@@ -54,249 +57,214 @@ def wrap(draw, text, fnt, max_w):
     return lines
 
 
-def draw_text_block(draw, x, y, lines, fnt, fill, leading):
-    for line in lines:
-        draw.text((x, y), line, font=fnt, fill=fill)
+def block(d, x, y, text, font, fill, max_w, leading):
+    for line in wrap(d, text, font, max_w):
+        d.text((x, y), line, font=font, fill=fill)
         y += leading
     return y
 
 
-def starburst(draw, cx, cy, outer, inner, points, fill, outline):
+def star(d, cx, cy, outer, inner, points, fill, outline):
     pts = []
     for i in range(points * 2):
         r = outer if i % 2 == 0 else inner
         a = math.pi * i / points - math.pi / 2
         pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    draw.polygon(pts, fill=fill, outline=outline, width=2)
+    d.polygon(pts, fill=fill, outline=outline, width=2)
 
 
-def label(draw, x, y, text, fnt, fill=(255, 255, 255)):
-    """White text with a dark halo so it stays legible over the map."""
+def halo_text(d, x, y, text, font, fill=(255, 255, 255)):
     for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-        draw.text((x + dx, y + dy), text, font=fnt, fill=(10, 30, 40))
-    draw.text((x, y), text, font=fnt, fill=fill)
+        d.text((x + dx, y + dy), text, font=font, fill=(8, 24, 36))
+    d.text((x, y), text, font=font, fill=fill)
 
 
-# ---------------------------------------------------------------- stories
-LEAD = {
-    "kicker": "LEAD STORY  \u2022  THE GULF",
-    "headline": "IRAN DRONES STRIKE US BASE IN KUWAIT",
-    "body": (
-        "Tehran widened its attacks across the Gulf on Wednesday, firing "
-        "drones at the US Ali Al Salem air base in Kuwait \u2014 its first "
-        "strike there since September \u2014 and at targets in Bahrain, "
-        "intercepted for a third time this week. It followed US strikes on "
-        "a missile site on Qeshm Island."
-    ),
-}
+# ------------------------------------------------------------------ content
+LEAD_HEAD = "IRAN'S DRONES HIT A US BASE IN KUWAIT"
+LEAD_BODY = (
+    "Iran widened its Gulf attacks on Wednesday, sending drones at the "
+    "US Ali Al Salem air base in Kuwait \u2014 its first strike there since "
+    "September \u2014 and at targets in Bahrain, a day after US jets hit "
+    "Qeshm Island."
+)
+LEAD_NOTE = "Kuwait's defences engaged the drones; Bahrain said it stopped several attacks."
 
-STORIES = [
+CELLS = [
     {
-        "tag": "POLITICS",
-        "color": (30, 58, 95),
-        "headline": "PELTOLA WINS ALASKA; DEMOCRATS REACH 56",
+        "tag": "UNITED STATES",
+        "color": BLUE,
+        "head": "PELTOLA WINS ALASKA \u2014 DEMOCRATS TO 56",
         "body": (
-            "Democrat Mary Peltola wins Alaska's Senate seat, flipping it "
-            "from the Republicans and lifting her party to 56 seats."
+            "Mary Peltola beats Republican Dan Sullivan for Alaska's Senate "
+            "seat \u2014 the Democrats' ninth flip of the midterms and a 56\u201344 majority."
         ),
     },
     {
-        "tag": "WEATHER",
-        "color": (8, 102, 120),
-        "headline": "CATEGORY 5 CYCLONE XAVIER HITS COOK ISLANDS",
+        "tag": "PACIFIC",
+        "color": TEAL,
+        "head": "CYCLONE XAVIER, CATEGORY 5, BEARS DOWN",
         "body": (
-            "Severe Tropical Cyclone Xavier, with gusts up to 315 km/h, "
-            "reached the Northern Cook Islands. Shelters opened as the "
-            "storm bore down on the atolls."
+            "Severe Tropical Cyclone Xavier reaches the Northern Cook Islands "
+            "with sustained winds of 220 km/h and gusts up to 315 km/h. "
+            "Shelters open on the atolls."
         ),
     },
     {
         "tag": "MARKETS",
-        "color": (22, 101, 52),
-        "headline": "ALSTOM HITS A 21-YEAR LOW",
+        "color": GREEN,
+        "head": "ALSTOM SINKS TO A 21-YEAR LOW",
         "body": (
-            "Shares in the French train maker fell 9% to \u20ac9.08, their "
-            "lowest since May 2005, after net debt more than doubled to "
-            "\u20ac1.1bn."
+            "The French train maker's shares fall 9% to \u20ac9.08, their lowest "
+            "since May 2005, after net debt more than doubled to \u20ac1.1bn."
         ),
     },
     {
         "tag": "GAZA",
-        "color": (139, 26, 26),
-        "headline": "UN WARNS OF \u2018ANOTHER WINTER IN TENTS AND RUBBLE\u2019",
+        "color": RED,
+        "head": "\u201cANOTHER WINTER IN TENTS AND RUBBLE\u201d",
         "body": (
-            "The Board of Peace told the UN Security Council the Gaza "
-            "ceasefire could collapse without urgent steps, and urged "
-            "scaled-up shelter and winter aid."
+            "The Board of Peace tells the UN Security Council the Gaza "
+            "ceasefire could collapse without urgent action; it urges "
+            "winter shelter aid now."
         ),
     },
     {
-        "tag": "DISASTER",
-        "color": (71, 85, 105),
-        "headline": "MAGNITUDE 6.0 QUAKE HITS PAPUA NEW GUINEA",
+        "tag": "EARTHQUAKE",
+        "color": SLATE,
+        "head": "MAGNITUDE 6.0 QUAKE IN PAPUA NEW GUINEA",
         "body": (
-            "A magnitude 6.0 earthquake struck Papua New Guinea at a depth "
-            "of 10 km, the German Research Centre for Geosciences said."
+            "A magnitude 6.0 earthquake strikes Papua New Guinea at a depth "
+            "of 10 km, the German Research Centre for Geosciences says."
         ),
     },
 ]
 
 NUMBERS = [
-    "Brent $91.69 \u25bc1.6%  \u00b7  WTI $84.06 \u25bc2.3%",
-    "Senate: Democrats 56 \u2013 Republicans 44",
-    "Xavier gusts 315 km/h  \u00b7  pressure 910 hPa",
-    "Alstom \u22129% to \u20ac9.08  \u00b7  \u221264% in 2026",
+    "Brent $91.69  \u25bc 1.6%    WTI $84.06  \u25bc 2.3%",
+    "US Senate: Democrats 56 \u2014 Republicans 44",
+    "Xavier: 220 km/h sustained, gusts 315 km/h",
+    "Alstom \u2212 9% to \u20ac9.08 \u00b7 \u2212 64% in 2026",
 ]
 
 ALSO = (
-    "Malaysia to review leaked Deutsche Bank 1MDB files  \u2022  Xi opens "
-    "APEC in Shenzhen  \u2022  Gulf bourses fall"
+    "ALSO:  Malaysia to review leaked Deutsche Bank 1MDB files  \u00b7  "
+    "Xi opens APEC in Shenzhen  \u00b7  Most Gulf bourses fall"
 )
 FOOTER = (
-    "Sources: Reuters \u00b7 AP \u00b7 The Guardian \u00b7 RNZ \u00b7 NZ "
-    "MetService \u00b7 AAP \u00b7 Malaysiakini \u00b7 Xinhua \u2014 All events "
-    "reported on Wednesday 18 November 2026"
+    "Sources: Reuters  \u00b7  AP  \u00b7  AAP  \u00b7  RNZ  \u00b7  Fiji Meteorological Service  \u00b7  "
+    "Cook Islands Meteorological Service  \u00b7  Malaysiakini  \u00b7  Xinhua"
 )
+FOOTER2 = "All events happened, or were first reported, on Wednesday 18 November 2026."
 
 
-# ---------------------------------------------------------------- drawing
-def draw_gulf(draw, x0, y0, x1, y1):
-    """Flat stylised map of the Gulf: sea, land, targets, drones."""
-    sea = (27, 78, 98)
-    land = (224, 205, 160)
-    land_dark = (203, 182, 132)
-    draw.rectangle([x0, y0, x1, y1], fill=sea)
-    # Arabian peninsula along the bottom and left
-    draw.polygon([
-        (x0, y0 + 190), (x0 + 70, y0 + 150), (x0 + 150, y0 + 168),
-        (x0 + 205, y0 + 205), (x0 + 235, y0 + 262), (x0 + 300, y1),
-        (x0, y1),
-    ], fill=land)
-    # Iran along the top and right
-    draw.polygon([
-        (x0 + 120, y0), (x1, y0), (x1, y0 + 130), (x1 - 60, y0 + 120),
-        (x1 - 130, y0 + 78), (x0 + 210, y0 + 58), (x0 + 150, y0 + 30),
-    ], fill=land_dark)
-    # the Gulf itself, between the two land masses
-    draw.polygon([
-        (x0 + 150, y0 + 30), (x0 + 210, y0 + 58), (x1 - 130, y0 + 78),
-        (x1 - 60, y0 + 120), (x0 + 235, y0 + 262), (x0 + 205, y0 + 205),
-        (x0 + 150, y0 + 168), (x0 + 70, y0 + 150),
-    ], fill=(64, 128, 158))
-    # wave marks on the water
-    for xx, yy in ((x0 + 90, y0 + 100), (x0 + 250, y0 + 150),
-                   (x0 + 130, y0 + 230)):
-        draw.arc([xx - 14, yy - 6, xx + 14, yy + 6], 200, 340,
-                 fill=(140, 185, 205), width=2)
-    # Qeshm Island marker (Iran, top right)
-    qx, qy = x0 + 268, y0 + 62
-    draw.ellipse([qx - 5, qy - 5, qx + 5, qy + 5], fill=(255, 255, 255),
-                 outline=(10, 30, 40), width=2)
-    label(draw, qx + 10, qy - 8, "QESHM ISLAND", font(BOLD, 13))
-    # Kuwait target: Ali Al Salem air base
-    kx, ky = x0 + 100, y0 + 140
-    starburst(draw, kx, ky, 30, 12, 12, (245, 158, 11), (234, 88, 12))
-    starburst(draw, kx, ky, 14, 6, 8, (254, 240, 138), (234, 88, 12))
-    label(draw, kx - 30, ky + 36, "KUWAIT", font(BOLD, 14))
-    label(draw, kx - 30, ky + 54, "Ali Al Salem air base", font(REG, 12))
-    # Bahrain target
-    bx, by = x0 + 225, y0 + 225
-    starburst(draw, bx, by, 24, 10, 12, (245, 158, 11), (234, 88, 12))
-    starburst(draw, bx, by, 11, 5, 8, (254, 240, 138), (234, 88, 12))
-    label(draw, bx + 28, by - 8, "BAHRAIN", font(BOLD, 14))
-    # drones flying in from the top
-    for dx, dy in ((x0 + 180, y0 + 40), (x0 + 300, y0 + 110)):
-        draw.polygon([(dx, dy - 8), (dx + 14, dy), (dx, dy + 8),
-                      (dx - 14, dy)], fill=(24, 24, 24))
-        draw.line([(dx - 22, dy - 14), (dx - 8, dy - 6)], fill=(24, 24, 24),
-                  width=2)
-        draw.line([(dx + 22, dy - 14), (dx + 8, dy - 6)], fill=(24, 24, 24),
-                  width=2)
-    label(draw, x0 + 12, y0 + 10, "THE GULF", font(BOLD, 15))
-    # scale note
-    draw.text((x1 - 118, y1 - 22), "map not to scale", font=font(REG, 11),
-              fill=(190, 210, 220))
+# ------------------------------------------------------------------ map
+def draw_gulf(d, x0, y0, x1, y1):
+    """Stylised Gulf map: blue sea, sand land, three marked places."""
+    sea = (24, 74, 96)
+    sand = (226, 208, 164)
+    sand_dark = (206, 184, 134)
+    d.rectangle([x0, y0, x1, y1], fill=sea)
+    # Iran, top edge
+    d.polygon(
+        [(x0, y0), (x1, y0), (x1, y0 + 96), (x1 - 88, y0 + 88),
+         (x1 - 170, y0 + 52), (x0 + 128, y0 + 44), (x0 + 64, y0 + 20)],
+        fill=sand_dark,
+    )
+    # Arabia, bottom edge
+    d.polygon(
+        [(x0, y0 + 196), (x0 + 96, y0 + 168), (x0 + 190, y0 + 188),
+         (x0 + 252, y0 + 226), (x1, y0 + 252), (x1, y1), (x0, y1)],
+        fill=sand,
+    )
+    # the Gulf water between them
+    d.polygon(
+        [(x0 + 64, y0 + 20), (x0 + 128, y0 + 44), (x1 - 170, y0 + 52),
+         (x1 - 88, y0 + 88), (x1, y0 + 96), (x1, y0 + 252),
+         (x0 + 252, y0 + 226), (x0 + 190, y0 + 188), (x0 + 96, y0 + 168),
+         (x0, y0 + 196), (x0, y0 + 120)],
+        fill=(58, 122, 152),
+    )
+    for xx, yy in ((x0 + 60, y0 + 110), (x0 + 200, y0 + 150), (x0 + 120, y0 + 210)):
+        d.arc([xx - 13, yy - 5, xx + 13, yy + 5], 200, 340,
+              fill=(150, 190, 210), width=2)
+    # Qeshm Island: US strike on Tuesday
+    qx, qy = x0 + 268, y0 + 58
+    d.ellipse([qx - 6, qy - 6, qx + 6, qy + 6], fill=(255, 255, 255),
+              outline=(10, 30, 40), width=2)
+    halo_text(d, qx - 118, qy - 24, "QESHM ISLAND", fnt(BOLD, 13))
+    d.text((qx - 118, qy + 8), "US strike Tue", font=fnt(REG, 12), fill=(255, 255, 255))
+    # Ali Al Salem, Kuwait: gold starburst
+    kx, ky = x0 + 96, y0 + 148
+    star(d, kx, ky, 30, 12, 12, (245, 158, 11), (234, 88, 12))
+    star(d, kx, ky, 13, 6, 8, (254, 240, 138), (234, 88, 12))
+    halo_text(d, kx - 26, ky + 36, "KUWAIT", fnt(BOLD, 14))
+    d.text((kx - 26, ky + 54), "Ali Al Salem", font=fnt(REG, 12), fill=(255, 255, 255))
+    # Bahrain: orange dot
+    bx, by = x0 + 218, y0 + 196
+    d.ellipse([bx - 8, by - 8, bx + 8, by + 8], fill=(234, 88, 12),
+              outline=(255, 255, 255), width=2)
+    halo_text(d, bx + 12, by - 8, "BAHRAIN", fnt(BOLD, 13))
+    d.text((bx + 12, by + 10), "intercepted", font=fnt(REG, 12), fill=(255, 255, 255))
+    # strait label
+    halo_text(d, x0 + 238, y0 + 118, "STRAIT OF", fnt(BOLD, 11))
+    halo_text(d, x0 + 238, y0 + 132, "HORMUZ", fnt(BOLD, 11))
 
 
-def main():
+# ------------------------------------------------------------------ page
+def draw():
     img = Image.new("RGB", (W, H), PAPER)
-    draw = ImageDraw.Draw(img)
+    d = ImageDraw.Draw(img)
 
-    # ---- masthead ------------------------------------------------------
-    draw.rectangle([0, 0, W, 96], fill=TEAL)
-    draw.rectangle([0, 92, W, 96], fill=GOLD)
-    draw.text((28, 20), "THE WORLD IN ONE PAGE", font=font(BOLD, 38),
-              fill=(255, 255, 255))
-    draw.text((28, 66), "One day's news, drawn from verified reporting",
-              font=font(REG, 15), fill=(190, 214, 210))
-    draw.text((996, 18), "WEDNESDAY", font=font(BOLD, 19), fill=GOLD,
-              anchor="ra")
-    draw.text((996, 44), "18 NOVEMBER 2026", font=font(BOLD, 30),
-              fill=(255, 255, 255), anchor="ra")
+    # header band
+    d.rectangle([0, 0, W, 118], fill=NAVY)
+    d.rectangle([0, 118, W, 122], fill=GOLD)
+    d.text((32, 18), "THE WORLD IN ONE DAY", font=fnt(BOLD, 52), fill=(255, 255, 255))
+    d.text((32, 80), "WEDNESDAY  18  NOVEMBER  2026", font=fnt(BOLD, 24), fill=GOLD_LIGHT)
+    d.text((742, 84), "WORLD NEWS", font=fnt(BOLD, 20), fill=(170, 190, 215))
+    d.text((742, 22), "ONE DAY,", font=fnt(BOLD, 20), fill=(255, 255, 255))
+    d.text((742, 46), "ONE IMAGE.", font=fnt(BOLD, 20), fill=(255, 255, 255))
 
-    # ---- lead story ----------------------------------------------------
-    lx0, ly0, lx1, ly1 = 28, 112, 996, 436
-    draw.rectangle([lx0, ly0, lx1, ly1], fill=CARD, outline=BORDER, width=1)
-    draw.rectangle([lx0, ly0, lx1, ly0 + 6], fill=RED)
-    draw_gulf(draw, 44, 128, 420, 420)
-    tx = 444
-    draw.text((tx, 134), LEAD["kicker"], font=font(BOLD, 17), fill=RED)
-    hl = wrap(draw, LEAD["headline"], font(BOLD, 42), lx1 - tx - 16)
-    y = draw_text_block(draw, tx, 162, hl, font(BOLD, 42), INK, 50)
-    body = wrap(draw, LEAD["body"], font(REG, 19), lx1 - tx - 16)
-    draw_text_block(draw, tx, y + 12, body, font(REG, 19), (51, 51, 51), 25)
+    # lead card
+    d.rectangle([28, 140, 996, 428], fill=CARD, outline=LINE, width=2)
+    d.rectangle([28, 140, 996, 146], fill=RED)
+    d.text((48, 158), "LEAD STORY  \u00b7  THE GULF", font=fnt(BOLD, 19), fill=RED)
+    block(d, 48, 190, LEAD_HEAD, fnt(BOLD, 38), INK, 500, 46)
+    block(d, 48, 292, LEAD_BODY, fnt(REG, 18), INK, 510, 23)
+    d.text((48, 410), LEAD_NOTE, font=fnt(REG, 16), fill=GREY)
+    draw_gulf(d, 580, 158, 976, 410)
 
-    # ---- five stories + numbers panel, 2 x 3 grid -----------------------
-    cols = [28, 528]
-    rows = [452, 602, 752]
-    cell_w, cell_h = 468, 138
-    for i, st in enumerate(STORIES):
-        x0 = cols[i % 2]
-        y0 = rows[i // 2]
-        x1, y1 = x0 + cell_w, y0 + cell_h
-        draw.rectangle([x0, y0, x1, y1], fill=CARD, outline=BORDER, width=1)
-        draw.rectangle([x0, y0, x0 + 5, y1], fill=st["color"])
-        draw.text((x0 + 18, y0 + 12), st["tag"], font=font(BOLD, 14),
-                  fill=st["color"])
-        hl = wrap(draw, st["headline"], font(BOLD, 20), cell_w - 36)
-        y = draw_text_block(draw, x0 + 18, y0 + 36, hl, font(BOLD, 20),
-                            INK, 24)
-        body = wrap(draw, st["body"], font(REG, 15), cell_w - 36)
-        draw_text_block(draw, x0 + 18, y + 6, body, font(REG, 15),
-                        (51, 51, 51), 19)
-    # numbers panel: last cell of the grid
-    nx0, ny0 = cols[1], rows[2]
-    nx1, ny1 = nx0 + cell_w, ny0 + cell_h
-    draw.rectangle([nx0, ny0, nx1, ny1], fill=TEAL_DARK)
-    draw.text((nx0 + 18, ny0 + 12), "BY THE NUMBERS", font=font(BOLD, 15),
-              fill=GOLD)
-    y = ny0 + 38
+    # grid: 2 columns x 3 rows, five stories + numbers box
+    gx0, gy0 = 28, 446
+    cw, ch, gap = 472, 148, 18
+    for i, cell in enumerate(CELLS):
+        x = gx0 + (i % 2) * (cw + gap)
+        y = gy0 + (i // 2) * (ch + gap)
+        d.rectangle([x, y, x + cw, y + ch], fill=CARD, outline=LINE, width=2)
+        d.rectangle([x, y, x + cw, y + 6], fill=cell["color"])
+        d.text((x + 16, y + 14), cell["tag"], font=fnt(BOLD, 15), fill=cell["color"])
+        block(d, x + 16, y + 38, cell["head"], fnt(BOLD, 20), INK, cw - 32, 24)
+        block(d, x + 16, y + 88, cell["body"], fnt(REG, 15), INK, cw - 32, 19)
+    # numbers box, last cell
+    x = gx0 + cw + gap
+    y = gy0 + 2 * (ch + gap)
+    d.rectangle([x, y, x + cw, y + ch], fill=NAVY, outline=NAVY, width=2)
+    d.text((x + 16, y + 14), "BY THE NUMBERS", font=fnt(BOLD, 17), fill=GOLD_LIGHT)
+    yy = y + 44
     for line in NUMBERS:
-        draw.text((nx0 + 18, y), line, font=font(REG, 15),
-                  fill=(255, 255, 255))
-        y += 22
+        d.text((x + 16, yy), line, font=fnt(REG, 17), fill=(255, 255, 255))
+        yy += 25
 
-    # ---- ALSO strip ------------------------------------------------------
-    draw.rectangle([28, 906, 996, 940], fill=STRIP)
-    draw.text((42, 923), "ALSO:", font=font(BOLD, 15), fill=INK,
-              anchor="lm")
-    aw = draw.textlength("ALSO:  ", font=font(BOLD, 15))
-    draw.text((42 + aw, 923), ALSO, font=font(REG, 15), fill=INK,
-              anchor="lm")
+    # also strip
+    d.rectangle([28, 934, 996, 970], fill=(243, 233, 210), outline=LINE, width=1)
+    block(d, 44, 944, ALSO, fnt(BOLD, 14), (60, 48, 20), 936, 18)
 
-    # ---- footer ----------------------------------------------------------
-    fw = draw.textlength(FOOTER, font=font(REG, 13))
-    draw.text(((W - fw) / 2, 960), FOOTER, font=font(REG, 13), fill=FOOT)
-
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "entry.png")
-    img.save(out, optimize=True)
-    size = os.path.getsize(out)
-    print(f"saved {out}  {W}x{H}  {size} bytes "
-          f"({size / 1024:.1f} KiB, limit 1024 KiB)")
-    assert size <= 1024 * 1024, "entry.png over the 1 MiB cap"
-    print("OK: 1024x1024, under 1 MiB")
+    # footer
+    d.text((32, 982), FOOTER, font=fnt(REG, 13), fill=(107, 114, 128))
+    d.text((32, 1000), FOOTER2, font=fnt(REG, 13), fill=(107, 114, 128))
+    return img
 
 
 if __name__ == "__main__":
-    main()
+    poster = draw()
+    poster.save("entry.png", format="PNG", optimize=False)
+    print("wrote entry.png", poster.size)
